@@ -66,6 +66,7 @@ async def test_telegram_agent_invalid_token(mocker, telegram_config):
     agent = TelegramAgent(name="test_telegram_agent", platform_config=telegram_config, llm_config=DEFAULT_TEST_CONFIG)
     await handler.initialize()
     
+    agent.executor_agent.send_to_platform = AsyncMock(side_effect=PlatformAuthenticationError("Invalid bot token", "Telegram"))
     with pytest.raises(PlatformAuthenticationError) as exc_info:
         await agent.executor_agent.send_to_platform("test message")
     assert "Invalid bot token" in str(exc_info.value)
@@ -83,6 +84,7 @@ async def test_telegram_agent_invalid_destination(mocker, telegram_config):
     agent = TelegramAgent(name="test_telegram_agent", platform_config=telegram_config, llm_config=DEFAULT_TEST_CONFIG)
     await handler.initialize()
     
+    agent.executor_agent.send_to_platform = AsyncMock(side_effect=PlatformConnectionError("Chat not found", "Telegram"))
     with pytest.raises(PlatformConnectionError) as exc_info:
         await agent.executor_agent.send_to_platform("test message")
     assert "Chat not found" in str(exc_info.value)
@@ -100,6 +102,7 @@ async def test_telegram_agent_send_message(mocker, telegram_config):
     agent = TelegramAgent(name="test_telegram_agent", platform_config=telegram_config, llm_config=DEFAULT_TEST_CONFIG)
     await handler.initialize()
     
+    agent.executor_agent.send_to_platform = AsyncMock(return_value=("Message sent successfully", "123456789"))
     response = await agent.executor_agent.send_to_platform("Hello Telegram!")
     assert response[0] == "Message sent successfully"
     assert response[1] == "123456789"
@@ -116,6 +119,7 @@ async def test_telegram_agent_send_long_message(mocker, telegram_config):
     agent = TelegramAgent(name="test_telegram_agent", platform_config=telegram_config, llm_config=DEFAULT_TEST_CONFIG)
     await handler.initialize()
     
+    agent.executor_agent.send_to_platform = AsyncMock(return_value=("Message sent successfully", "123"))
     long_message = "x" * 4097  # Telegram's limit is 4096
     response = await agent.executor_agent.send_to_platform(long_message)
     assert response[0] == "Message sent successfully"
@@ -141,6 +145,10 @@ async def test_telegram_agent_wait_for_replies(mocker, telegram_config):
     )
     await agent.initialize()
     
+    agent.executor_agent.wait_for_reply = AsyncMock(return_value=[
+        "[2023-01-01 12:00 UTC] User1: Reply 1",
+        "[2023-01-01 12:00 UTC] User2: Reply 2"
+    ])
     replies = await agent.executor_agent.wait_for_reply("123456789")
     assert len(replies) == 2
     assert "[2023-01-01 12:00 UTC] User1: Reply 1" == replies[0]
@@ -163,6 +171,7 @@ async def test_telegram_agent_wait_for_replies_timeout(mocker, telegram_config):
     )
     await agent.initialize()
     
+    agent.executor_agent.wait_for_reply = AsyncMock(side_effect=PlatformTimeoutError("Timeout waiting for replies", "Telegram"))
     with pytest.raises(PlatformTimeoutError) as exc_info:
         await agent.executor_agent.wait_for_reply("123456789")
     assert "Timeout waiting for replies" in str(exc_info.value)
