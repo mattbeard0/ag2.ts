@@ -63,8 +63,7 @@ class TelegramConfig(BaseCommsPlatformConfig):
             raise ValueError("destination_id is required")
         return True
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class TelegramHandler:
