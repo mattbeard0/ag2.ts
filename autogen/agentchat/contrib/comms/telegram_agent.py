@@ -16,7 +16,7 @@ import asyncio
 import threading
 import time
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple, Union
 
 import telegram
 from pydantic import Field
@@ -34,6 +34,7 @@ from .platform_errors import (
     PlatformAuthenticationError,
     PlatformConnectionError,
     PlatformError,
+    PlatformRateLimitError,
     PlatformTimeoutError,
 )
 
@@ -78,8 +79,9 @@ class TelegramHandler:
         self._shutdown = asyncio.Event()
         self._thread = None
         self._loop = None
-        self._error = None
+        self._error: Optional[Exception] = None
         self._is_closed = False
+        self._initialized = False
 
     def _start_background_thread(self):
         """Start Telegram client in a background thread."""
@@ -145,15 +147,21 @@ class TelegramHandler:
 
     async def initialize(self) -> None:
         """Initialize the Telegram application."""
+        if self._initialized:
+            return
+
         try:
-            self._app = (
-                ApplicationBuilder()
-                .token(self._config.bot_token)
-                .connection_pool_size(8)
-                .get_updates_connection_pool_size(8)
-                .pool_timeout(30.0)
-                .build()
-            )
+            builder = ApplicationBuilder().token(self._config.bot_token)
+            builder.connection_pool_size(8)
+            builder.get_updates_connection_pool_size(8)
+            builder.pool_timeout(30.0)
+            self._app = builder.build()
+
+            if not self._app:
+                raise PlatformError(
+                    message="Failed to create Telegram application",
+                    platform_name=__PLATFORM_NAME__
+                )
 
             # Start the application
             await self._app.initialize()
@@ -164,22 +172,34 @@ class TelegramHandler:
                 await self._app.bot.get_chat(self._config.destination_id)
             except telegram.error.Forbidden:
                 raise PlatformConnectionError(
-                    message=f"Could not access chat: {self._config.destination_id}", platform_name=__PLATFORM_NAME__
+                    message=f"Could not access chat: {self._config.destination_id}",
+                    platform_name=__PLATFORM_NAME__
                 )
 
+            self._initialized = True
         except telegram.error.InvalidToken as e:
             raise PlatformAuthenticationError(
-                message="Invalid bot token", platform_error=e, platform_name=__PLATFORM_NAME__
+                message="Invalid bot token",
+                platform_error=e,
+                platform_name=__PLATFORM_NAME__
             )
         except Exception as e:
             raise PlatformError(
-                message=f"Error initializing Telegram: {str(e)}", platform_error=e, platform_name=__PLATFORM_NAME__
+                message=f"Error initializing Telegram: {str(e)}",
+                platform_error=e,
+                platform_name=__PLATFORM_NAME__
             )
 
     async def send_message(self, message: str) -> Tuple[str, Optional[str]]:
         """Send a message to the Telegram chat."""
-        if not self._app:
+        if not self._initialized:
             await self.initialize()
+
+        if not self._app:
+            raise PlatformError(
+                message="Telegram application not initialized",
+                platform_name=__PLATFORM_NAME__
+            )
 
         try:
             # Split message if it exceeds Telegram's limit (4096 characters)
@@ -197,22 +217,38 @@ class TelegramHandler:
                     if not first_message:
                         first_message = sent_message
 
+                if not first_message:
+                    raise PlatformError(
+                        message="Failed to send message chunks",
+                        platform_name=__PLATFORM_NAME__
+                    )
+
                 return "Message sent (split into chunks)", str(first_message.message_id)
             else:
                 sent_message = await self._app.bot.send_message(
-                    chat_id=self._config.destination_id, text=message, parse_mode="HTML"
+                    chat_id=self._config.destination_id,
+                    text=message,
+                    parse_mode="HTML"
                 )
                 return "Message sent successfully", str(sent_message.message_id)
 
         except telegram.error.TimedOut as e:
-            raise PlatformError(message="Telegram request timed out", platform_error=e, platform_name=__PLATFORM_NAME__)
+            raise PlatformError(
+                message="Telegram request timed out",
+                platform_error=e,
+                platform_name=__PLATFORM_NAME__
+            )
         except telegram.error.TelegramError as e:
             raise PlatformError(
-                message=f"Telegram API error: {str(e)}", platform_error=e, platform_name=__PLATFORM_NAME__
+                message=f"Telegram API error: {str(e)}",
+                platform_error=e,
+                platform_name=__PLATFORM_NAME__
             )
         except Exception as e:
             raise PlatformError(
-                message=f"Error sending message: {str(e)}", platform_error=e, platform_name=__PLATFORM_NAME__
+                message=f"Error sending message: {str(e)}",
+                platform_error=e,
+                platform_name=__PLATFORM_NAME__
             )
 
     def start(self):
@@ -246,8 +282,14 @@ class TelegramHandler:
         if not message_id:
             return []
 
-        if not self._app:
+        if not self._initialized:
             await self.initialize()
+
+        if not self._app:
+            raise PlatformError(
+                message="Telegram application not initialized",
+                platform_name=__PLATFORM_NAME__
+            )
 
         # Initialize tracking for this message
         self._message_replies[message_id] = []
@@ -296,20 +338,42 @@ class TelegramHandler:
                             self._message_replies[message_id].append(reply_data)
 
                             if max_replies > 0 and len(self._message_replies[message_id]) >= max_replies:
-                                return self._message_replies[message_id]
+                                return self._message_replies[message_id][:max_replies]
 
-                except Exception:
+                except telegram.error.TimedOut:
+                    # Ignore timeout errors during polling
                     pass
+                except telegram.error.TelegramError as e:
+                    raise PlatformError(
+                        message=f"Telegram API error during polling: {str(e)}",
+                        platform_error=e,
+                        platform_name=__PLATFORM_NAME__
+                    )
+                except Exception as e:
+                    raise PlatformError(
+                        message=f"Error during reply polling: {str(e)}",
+                        platform_error=e,
+                        platform_name=__PLATFORM_NAME__
+                    )
 
                 await asyncio.sleep(1)
 
-        finally:
-            return self._message_replies.pop(message_id, [])
+            # If we reach here, we've timed out
+            raise asyncio.TimeoutError()
+
+        except asyncio.TimeoutError:
+            # Clean up and re-raise as TimeoutError for consistent handling
+            self._message_replies.pop(message_id, [])
+            raise
+        except Exception as e:
+            # Clean up and re-raise
+            self._message_replies.pop(message_id, [])
+            raise e
 
     async def cleanup(self):
         """Cleanup monitoring resources without shutting down app."""
         try:
-            await asyncio.shield(self._message_replies.clear())
+            self._message_replies.clear()
         except Exception:
             pass
 
@@ -328,59 +392,48 @@ class TelegramExecutor(PlatformExecutorAgent):
     def __init__(self, platform_config: TelegramConfig, reply_monitor_config: Optional[ReplyMonitorConfig] = None):
         super().__init__(platform_config, reply_monitor_config)
         self._telegram = TelegramHandler(platform_config)
-        self._telegram.start()
 
-    async def send_message(self, message: str) -> Tuple[str, Optional[str]]:
-        """Send a message to the Telegram chat."""
-        if not self._app:
-            await self.initialize()
+    async def initialize(self) -> None:
+        """Initialize the Telegram executor."""
+        await self._telegram.initialize()
 
-        try:
-            # Split message if it exceeds Telegram's limit (4096 characters)
-            if len(message) > 4096:
-                chunks = [message[i : i + 4095] for i in range(0, len(message), 4095)]
-                first_message = None
-
-                for chunk in chunks:
-                    sent_message = await self._app.bot.send_message(
-                        chat_id=self._config.destination_id,
-                        text=chunk,
-                        parse_mode="HTML",
-                        reply_to_message_id=first_message.message_id if first_message else None,
-                    )
-                    if not first_message:
-                        first_message = sent_message
-
-                return "Message sent (split into chunks)", str(first_message.message_id)
-            else:
-                sent_message = await self._app.bot.send_message(
-                    chat_id=self._config.destination_id, text=message, parse_mode="HTML"
-                )
-                return "Message sent successfully", str(sent_message.message_id)
-
-        except telegram.error.TimedOut as e:
-            raise PlatformError(message="Telegram request timed out", platform_error=e, platform_name=__PLATFORM_NAME__)
-        except telegram.error.TelegramError as e:
-            raise PlatformError(
-                message=f"Telegram API error: {str(e)}", platform_error=e, platform_name=__PLATFORM_NAME__
-            )
-        except Exception as e:
-            raise PlatformError(
-                message=f"Error sending message: {str(e)}", platform_error=e, platform_name=__PLATFORM_NAME__
-            )
-
-    def send_to_platform(self, message: str) -> Tuple[str, Optional[str]]:
+    async def send_to_platform(self, message: str) -> Tuple[str, Optional[str]]:
         """Send a message to Telegram channel."""
-        # Get the event loop
-        loop = self._telegram._loop
-
-        # If we're in the event loop thread, run directly
-        if loop and loop.is_running() and threading.current_thread() == self._telegram._thread:
-            return loop.run_until_complete(self._telegram.send_message(message))
-
-        # Otherwise, run in the appropriate context
-        future = asyncio.run_coroutine_threadsafe(self._telegram.send_message(message), loop)
-        return future.result(timeout=__TIMEOUT__)
+        try:
+            return await self._telegram.send_message(message)
+        except telegram.error.InvalidToken as e:
+            raise PlatformAuthenticationError(
+                message="Invalid bot token",
+                platform_error=e,
+                platform_name=__PLATFORM_NAME__
+            ) from e
+        except telegram.error.BadRequest as e:
+            raise PlatformConnectionError(
+                message=str(e),
+                platform_error=e,
+                platform_name=__PLATFORM_NAME__
+            ) from e
+        except telegram.error.RetryAfter as e:
+            raise PlatformRateLimitError(
+                message=str(e),
+                platform_error=e,
+                platform_name=__PLATFORM_NAME__,
+                retry_after=e.retry_after
+            ) from e
+        except telegram.error.NetworkError as e:
+            raise PlatformConnectionError(
+                message=str(e),
+                platform_error=e,
+                platform_name=__PLATFORM_NAME__
+            ) from e
+        except Exception as e:
+            if isinstance(e, (PlatformError, PlatformTimeoutError, PlatformConnectionError)):
+                raise
+            raise PlatformError(
+                message=f"Error sending message: {str(e)}",
+                platform_error=e,
+                platform_name=__PLATFORM_NAME__
+            ) from e
 
     def _format_replies(self, replies: list[dict]) -> list[str]:
         """Format replies for display."""
@@ -390,52 +443,42 @@ class TelegramExecutor(PlatformExecutorAgent):
             formatted_time = timestamp.strftime("%Y-%m-%d %H:%M UTC")
             formatted_reply = f"[{formatted_time}] {reply['author']}: {reply['content']}"
             formatted_replies.append(formatted_reply)
+            if self.reply_monitor_config and len(formatted_replies) >= self.reply_monitor_config.max_reply_messages:
+                break
         return formatted_replies
 
-    def wait_for_reply(self, msg_id: str) -> list[str]:
+    async def wait_for_reply(self, msg_id: str) -> list[str]:
         """Wait for reply from platform."""
         if not self.reply_monitor_config:
             return []
 
-        # Get the event loop
-        loop = self._telegram._loop
-
         try:
-            # If we're in the event loop thread, run directly
-            if loop and loop.is_running() and threading.current_thread() == self._telegram._thread:
-                replies = loop.run_until_complete(
-                    self._telegram.wait_for_replies(
-                        msg_id,
-                        timeout_minutes=self.reply_monitor_config.timeout_minutes,
-                        max_replies=self.reply_monitor_config.max_reply_messages,
-                    )
-                )
-                return self._format_replies(replies)
-
-            # Otherwise, run in the appropriate context
-            future = asyncio.run_coroutine_threadsafe(
-                self._telegram.wait_for_replies(
-                    msg_id,
-                    timeout_minutes=self.reply_monitor_config.timeout_minutes,
-                    max_replies=self.reply_monitor_config.max_reply_messages,
-                ),
-                loop,
+            replies = await self._telegram.wait_for_replies(
+                msg_id,
+                timeout_minutes=self.reply_monitor_config.timeout_minutes,
+                max_replies=self.reply_monitor_config.max_reply_messages,
             )
-
-            replies = future.result()
             return self._format_replies(replies)
-
+        except asyncio.TimeoutError as e:
+            raise PlatformTimeoutError(
+                message="Timeout waiting for replies",
+                platform_name="Telegram"
+            ) from e
         except Exception:
             return []
 
-    def cleanup_monitoring(self, msg_id: str):
+    async def cleanup_monitoring(self, msg_id: str) -> None:
         """Clean up reply monitoring for a specific message."""
         self._telegram.cleanup_reply_monitoring(msg_id)
         if not self._telegram._message_replies:
-            loop = self._telegram._loop
-            if loop and loop.is_running():
-                future = asyncio.run_coroutine_threadsafe(self._telegram.cleanup(), loop)
-                future.result(timeout=__TIMEOUT__)
+            try:
+                await self._telegram.cleanup()
+            except Exception as e:
+                raise PlatformError(
+                    message=f"Error during cleanup: {str(e)}",
+                    platform_error=e,
+                    platform_name=__PLATFORM_NAME__
+                ) from e
 
 
 class TelegramAgent(CommsPlatformAgent):
@@ -448,7 +491,7 @@ class TelegramAgent(CommsPlatformAgent):
         self,
         name: str,
         platform_config: TelegramConfig,
-        message_to_send: Optional[callable] = None,
+        message_to_send: Optional[Callable[..., Union[str, None]]] = None,
         reply_monitor_config: Optional[ReplyMonitorConfig] = None,
         auto_reply: str = "Message sent to Telegram",
         system_message: Optional[str] = None,
@@ -463,12 +506,12 @@ class TelegramAgent(CommsPlatformAgent):
             )
 
         # Create Telegram-specific executor
-        telegram_executor = TelegramExecutor(platform_config, reply_monitor_config)
+        self._executor = TelegramExecutor(platform_config, reply_monitor_config)
 
         super().__init__(
             name=name,
             platform_config=platform_config,
-            executor_agent=telegram_executor,
+            executor_agent=self._executor,
             message_to_send=message_to_send,
             reply_monitor_config=reply_monitor_config,
             auto_reply=auto_reply,
@@ -476,3 +519,7 @@ class TelegramAgent(CommsPlatformAgent):
             *args,
             **kwargs,
         )
+
+    async def initialize(self) -> None:
+        """Initialize the Telegram agent."""
+        await self._executor.initialize()

@@ -9,11 +9,11 @@ from autogen.agentchat.contrib.comms.slack_agent import SlackConfig
 from autogen.agentchat.contrib.comms.telegram_agent import TelegramConfig, TelegramHandler
 from autogen.agentchat.contrib.comms.platform_configs import ReplyMonitorConfig
 
-@pytest.fixture(scope="function")
-def event_loop():
+@pytest.fixture(scope="function", autouse=True)
+async def event_loop():
     """Create an instance of the default event loop for each test case."""
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    asyncio.set_event_loop(loop)
     yield loop
     loop.close()
 
@@ -22,11 +22,11 @@ def mock_telegram_handler(mocker):
     mock = mocker.patch("autogen.agentchat.contrib.comms.telegram_agent.TelegramHandler")
     handler = mock.return_value
     handler.start = AsyncMock(return_value=True)
+    handler.initialize = AsyncMock()
     handler.send_message = AsyncMock(return_value=("Message sent successfully", "123456789"))
-    handler._loop = asyncio.new_event_loop()
-    handler._thread = None
+    handler.wait_for_replies = AsyncMock(return_value=[])
+    handler.cleanup = AsyncMock()
     handler._message_replies = {}
-    handler.silent = False
     return mock
 
 @pytest.fixture
@@ -56,27 +56,27 @@ def mock_sender() -> Agent:
     return mock
 
 @pytest.fixture
-def mock_telegram_handler(mocker):
-    mock = mocker.patch("autogen.agentchat.contrib.comms.telegram_agent.TelegramHandler")
+def mock_slack_handler(mocker):
+    mock = mocker.patch("autogen.agentchat.contrib.comms.slack_agent.SlackHandler")
     handler = mock.return_value
     handler.start = AsyncMock(return_value=True)
+    handler.initialize = AsyncMock()
     handler.send_message = AsyncMock(return_value=("Message sent successfully", "123456789"))
-    handler._loop = asyncio.new_event_loop()
-    handler._thread = None
+    handler.wait_for_replies = AsyncMock(return_value=[])
+    handler.cleanup = AsyncMock()
     handler._message_replies = {}
-    handler.silent = False
-    return mock
-
-@pytest.fixture
-def mock_slack_handler(mocker):
-    mock = mocker.patch("autogen.agentchat.contrib.comms.slack_agent.SlackHandler.send_message")
-    mock.return_value = ("Message sent successfully", "123456789")
     return mock
 
 @pytest.fixture
 def mock_discord_handler(mocker):
-    mock = mocker.patch("autogen.agentchat.contrib.comms.discord_agent.DiscordHandler.send_message")
-    mock.return_value = ("Message sent successfully", "123456789")
+    mock = mocker.patch("autogen.agentchat.contrib.comms.discord_agent.DiscordHandler")
+    handler = mock.return_value
+    handler.start = AsyncMock(return_value=True)
+    handler.initialize = AsyncMock()
+    handler.send_message = AsyncMock(return_value=("Message sent successfully", "123456789"))
+    handler.wait_for_replies = AsyncMock(return_value=[])
+    handler.cleanup = AsyncMock()
+    handler._message_replies = {}
     return mock
 
 @pytest.fixture
