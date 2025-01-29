@@ -31,15 +31,15 @@ def mock_telegram_handler(mocker):
 
 @pytest.fixture
 def discord_config() -> DiscordConfig:
-    return DiscordConfig(bot_token="fake_token", guild_name="TestGuild", channel_name="TestChannel")
+    return DiscordConfig(bot_token="mock-token", guild_name="mock-guild", channel_name="mock-channel")
 
 @pytest.fixture
 def slack_config() -> SlackConfig:
-    return SlackConfig(bot_token="xoxb-fake", channel_id="ABC123", signing_secret="secret")
+    return SlackConfig(bot_token="mock-token", channel_id="mock-channel", signing_secret="mock-secret")
 
 @pytest.fixture
 def telegram_config() -> TelegramConfig:
-    return TelegramConfig(bot_token="123456:ABC-DEF", destination_id="@testchannel")
+    return TelegramConfig(bot_token="mock-token", destination_id="mock-destination")
 
 @pytest.fixture
 def reply_monitor_config() -> ReplyMonitorConfig:
