@@ -226,6 +226,8 @@ commsagent-discord = ["discord.py>=2.4.0,<2.6"]
 commsagent-slack = ["slack_sdk>=3.33.0,<3.40"]
 commsagent-telegram = ["telethon>=1.38.1, <2"]
 
+code-execution = ["aiofiles>=24.1.0,<25"]
+
 ## dev dependencies
 
 # test dependencies
