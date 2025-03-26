@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 import os
 import subprocess
 import sys
@@ -25,7 +26,7 @@ class SystemPythonEnvironment(PythonEnvironment):
         Initialize a system Python environment.
 
         Args:
-            executable: Optional path to a specific Python executable. If None, uses the current Python.
+            executable: Optional path to a specific Python executable. If None, uses the current Python executable.
         """
         super().__init__()
         self._executable = executable or sys.executable
@@ -36,20 +37,7 @@ class SystemPythonEnvironment(PythonEnvironment):
         if not os.path.exists(self._executable):
             raise RuntimeError(f"Python executable not found at: {self._executable}")
 
-        print(f"Using system Python at: {self._executable}")
-
-        # Verify pip is available
-        try:
-            pip_version = subprocess.run(
-                [self._executable, "-m", "pip", "--version"],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            print(f"Pip version: {pip_version.stdout.strip()}")
-        except Exception as e:
-            print(f"Warning: pip may not be available: {str(e)}")
+        logging.info(f"Using system Python at: {self._executable}")
 
     def _cleanup_environment(self) -> None:
         """Clean up the system Python environment."""
@@ -70,38 +58,21 @@ class SystemPythonEnvironment(PythonEnvironment):
             if not os.path.exists(python_executable):
                 return {"success": False, "error": f"Python executable not found at {python_executable}"}
 
-            # Print the environment details
-            print(f"Executing code with system Python: {python_executable}")
-            print(f"Working directory: {os.getcwd()}")
-
             # Ensure the directory for the script exists
             script_dir = os.path.dirname(script_path)
             if script_dir:
                 os.makedirs(script_dir, exist_ok=True)
 
-            # Simple script header to check environment
-            script_header = """
-# Simple environment check
-import sys
-import os
-
-# Print Python info
-print(f"Python: {sys.executable}")
-print(f"Python version: {sys.version}")
-print(f"Working directory: {os.getcwd()}")
-
-# Original code follows
-"""
             # Write the code to the script file using asyncify (from base class)
-            await asyncify(self._write_to_file)(script_path, script_header + "\n\n" + code)
+            await asyncify(self._write_to_file)(script_path, code)
 
-            print(f"Wrote code to {script_path}")
+            logging.info(f"Wrote code to {script_path}")
 
-            # Execute the script using asyncify (from base class)
             try:
                 # Execute directly with subprocess using asyncify for better reliability
                 result = await asyncify(self._run_subprocess)([python_executable, script_path], timeout)
 
+                # Main execution result
                 return {
                     "success": result.returncode == 0,
                     "stdout": result.stdout,

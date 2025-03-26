@@ -66,8 +66,8 @@ class PythonLocalExecutionTool(Tool):
                 code_execution_request (CodeExecutionRequest): The Python code and libraries to execute
             """
             code = code_execution_request.code
-            # We still accept libraries in the request but don't pre-install them
-            # This allows the code to reference which libraries it needs
+
+            # NOTE: Libraries are not installed (something to consider for future versions)
 
             # Prepare a script file path
             script_dir = self._get_script_directory()
