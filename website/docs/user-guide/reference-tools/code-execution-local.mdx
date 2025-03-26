@@ -55,7 +55,7 @@ The parameters for the [`VenvPythonEnvironment`](/docs/api-reference/autogen/env
 | --- | --- |
 | `python_version` | If you do not specify a `python_path` or a `venv_path` with an existing virtual environment, a virtual environment with the specified Python version will be created. The Python version must already exist, it will not be installed. |
 | `python_path` | If you want to use a specific Python interpreter you can pass in the path (and filename) of it. This takes precedence over the `python_version`, but will not be used if the `venv_path` is provided and a virtual environment already exists. |
-| `venv_path` | If you want to use an existing virtual environment or want a new one to be created in a specific location, you can specify a path for it. | 
+| `venv_path` | If you want to use an existing virtual environment or want a new one to be created in a specific location, you can specify a path for it. |
 
 <Tip>
 If you pass in a `python_version` the tool will look for the Python interpreter executable in typical locations on disk. However, if yours is installed elsewhere you will need to use the `python_path` to specify the correct location.
