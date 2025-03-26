@@ -41,12 +41,12 @@ class VenvPythonEnvironment(PythonEnvironment):
             python_path: Optional direct path to a Python executable to use (must include the executable). Takes precedence over python_version if both are provided.
             venv_path: Optional path for the virtual environment, will create it if it doesn't exist. If None, creates a temp directory.
         """
-        super().__init__()
         self.python_version = python_version
         self.python_path = python_path
         self.venv_path = venv_path
         self.created_venv = False
         self._executable = None
+        super().__init__()
 
     def _setup_environment(self) -> None:
         """Set up the virtual environment."""

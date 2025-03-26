@@ -22,14 +22,14 @@ class PythonEnvironment(ABC):
         """
         self._token = None
 
+        # Set up the environment
+        self._setup_environment()
+
     def __enter__(self):
         """
         Enter the environment context.
         Sets this environment as the current one.
         """
-        # Set up the environment
-        self._setup_environment()
-
         # Set this as the current Python environment in the context
         self._token = PythonEnvironment._current_python_environment.set(self)
 

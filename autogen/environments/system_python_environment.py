@@ -28,8 +28,8 @@ class SystemPythonEnvironment(PythonEnvironment):
         Args:
             executable: Optional path to a specific Python executable. If None, uses the current Python executable.
         """
-        super().__init__()
         self._executable = executable or sys.executable
+        super().__init__()
 
     def _setup_environment(self) -> None:
         """Set up the system Python environment."""
