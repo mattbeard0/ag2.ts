@@ -7,6 +7,7 @@ from .code_execution import PythonCodeExecutionTool
 from .crawl4ai import Crawl4AITool
 from .deep_research import DeepResearchTool
 from .google_search import GoogleSearchTool
+from .google_search.youtube_search import YoutubeSearchTool
 from .messageplatform import (
     DiscordRetrieveTool,
     DiscordSendTool,
@@ -30,4 +31,5 @@ __all__ = [
     "SlackSendTool",
     "TelegramRetrieveTool",
     "TelegramSendTool",
+    "YoutubeSearchTool",
 ]
