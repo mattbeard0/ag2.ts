@@ -2,21 +2,18 @@
 from autogen import ConversableAgent, LLMConfig, register_function
 
 # Import the environment, working directory, and code execution tool
-from autogen.environments import VenvPythonEnvironment, WorkingDirectory
-from autogen.tools.experimental import PythonLocalExecutionTool
+from autogen.environments import SystemPythonEnvironment, WorkingDirectory
+from autogen.tools.experimental import PythonCodeExecutionTool
 
-# Create a new virtual environment using a Python version
-# Change this to match a version you have installed
-venv = VenvPythonEnvironment(python_version="3.11")
-
-# Create a temporary directory
-working_dir = WorkingDirectory.create_tmp()
-
-# Create our code execution tool
-python_executor = PythonLocalExecutionTool(
-    working_directory=working_dir,
-    python_environment=venv,
-)
+with SystemPythonEnvironment(executable="/usr/local/bin/python") as sys_py_env:
+    with WorkingDirectory(path="/tmp/ag2_working_dir/") as wd:
+        # Create our code execution tool, using the environment and working directory from the above context managers
+        python_executor = PythonCodeExecutionTool(
+            timeout=60,
+            # If not using the context managers above, you can set the working directory and python environment here
+            # working_directory=wd,
+            # python_environment=sys_py_env,
+        )
 
 with LLMConfig(model="gpt-4o", api_type="openai"):
 
@@ -46,8 +43,8 @@ register_function(
 
 result = code_runner.initiate_chat(
     recipient=question_agent,
-    message=("Write a Python program to write a poem to a file. "
-             "Follow up with another program to read the poem from the file and print it."
+    message=("Write Python code to print the current Python version followed by the numbers 1 to 11. "
+             "Make a syntax error in the first version and fix it in the second version."
     ),
     max_turns=5,
 )

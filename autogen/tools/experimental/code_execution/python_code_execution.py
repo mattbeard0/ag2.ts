@@ -13,15 +13,12 @@ from ....environments import WorkingDirectory
 from ....environments.python_environment import PythonEnvironment
 from ... import Tool
 
-__all__ = ["PythonLocalExecutionTool"]
+__all__ = ["PythonCodeExecutionTool"]
 
 
 @export_module("autogen.tools.experimental")
-class PythonLocalExecutionTool(Tool):
-    """Executes Python code locally and returns the result.
-
-    **CAUTION**: This tool will execute code in your local environment, which can be dangerous if the code is untrusted.
-    """
+class PythonCodeExecutionTool(Tool):
+    """Executes Python code in a given environment and returns the result."""
 
     def __init__(
         self,
@@ -31,9 +28,9 @@ class PythonLocalExecutionTool(Tool):
         python_environment: Optional[PythonEnvironment] = None,
     ) -> None:
         """
-        Initialize the PythonLocalExecutionTool.
+        Initialize the PythonCodeExecutionTool.
 
-        **CAUTION**: This tool will execute code in your local environment, which can be dangerous if the code is untrusted.
+        **CAUTION**: If provided a local environment, this tool will execute code in your local environment, which can be dangerous if the code is untrusted.
 
         Args:
             timeout: Maximum execution time allowed in seconds, will raise a TimeoutError exception if exceeded.
@@ -56,11 +53,11 @@ class PythonLocalExecutionTool(Tool):
             libraries: Annotated[list[str], Field(description="List of libraries to install before execution")]
 
         # The tool function, this is what goes to the LLM
-        async def execute_python_locally(
+        async def execute_python_code(
             code_execution_request: Annotated[CodeExecutionRequest, "Python code and the libraries required"],
         ) -> dict[str, Any]:
             """
-            Executes Python code locally and returns the result.
+            Executes Python code in the attached environment and returns the result.
 
             Args:
                 code_execution_request (CodeExecutionRequest): The Python code and libraries to execute
@@ -77,9 +74,9 @@ class PythonLocalExecutionTool(Tool):
             return await self.python_environment.execute_code(code=code, script_path=script_path, timeout=self.timeout)
 
         super().__init__(
-            name="python_execute_local",
-            description="Executes Python code locally and returns the result.",
-            func_or_tool=execute_python_locally,
+            name="python_execute_code",
+            description="Executes Python code and returns the result.",
+            func_or_tool=execute_python_code,
         )
 
     def _get_script_directory(self) -> str:

@@ -2,8 +2,9 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+from .docker_python_environment import DockerPythonEnvironment
 from .system_python_environment import SystemPythonEnvironment
 from .venv_python_environment import VenvPythonEnvironment
 from .working_directory import WorkingDirectory
 
-__all__ = ["SystemPythonEnvironment", "VenvPythonEnvironment", "WorkingDirectory"]
+__all__ = ["DockerPythonEnvironment", "SystemPythonEnvironment", "VenvPythonEnvironment", "WorkingDirectory"]
