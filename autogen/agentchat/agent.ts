@@ -6,7 +6,6 @@
 // SPDX-License-Identifier: MIT
 
 
-
 export abstract class Agent {
     /**
      * (In preview) A protocol for Agent.
@@ -14,6 +13,8 @@ export abstract class Agent {
      * An agent can communicate with other agents and perform actions.
      * Different agents can differ in what actions they perform in the `receive` method.
      */
+
+    abstract client?: any;
 
     abstract get name(): string;
     /**
