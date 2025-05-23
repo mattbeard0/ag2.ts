@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
-from pydantic import TYPE_CHECKING, BaseModel, Field
+from pydantic import BaseModel, Field
 
 from .oai.client import OpenAIWrapper
 
